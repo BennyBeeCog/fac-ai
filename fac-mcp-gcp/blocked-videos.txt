@@ -1,0 +1,7 @@
+# Blocked YouTube video IDs — one per line
+# Add video IDs here for non-sermon content (weddings, worship-only, etc.)
+
+jCS9cfDwsTY  # The Wedding of Grant and Brooke Fragasso
+tRINexMqYFs
+qgRfZWUFh2o
+Oc9pUpA6dfo

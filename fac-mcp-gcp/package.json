@@ -1,0 +1,14 @@
+{
+  "name": "fac-mcp-gcp-scripts",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "scrape": "node scripts/scrape-youtube.mjs",
+    "scrape:backfill": "node scripts/scrape-youtube.mjs --backfill"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.27.0",
+    "dotenv": "^16.0.0",
+    "pg": "^8.21.0"
+  }
+}

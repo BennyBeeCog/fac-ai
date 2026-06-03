@@ -1,0 +1,9 @@
+.env
+node_modules/
+*.log
+.DS_Store
+youtube-cookies.txt
+cdk.out/
+cdk.context.json
+failed-scrapes.json
+.claude/
