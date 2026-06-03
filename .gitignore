@@ -7,4 +7,3 @@ cdk.out/
 cdk.context.json
 failed-scrapes.json
 .claude/
-fac-mcp-server/
