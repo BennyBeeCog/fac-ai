@@ -162,13 +162,23 @@ async function fetchTranscriptWhisper(videoId, title) {
     console.log(`  Downloading audio for Whisper (this may take a while for long videos)...`);
     await new Promise(r => setTimeout(r, 3000)); // avoid rate limiting
     const skipMinutes = parseInt(process.env.SKIP_MINUTES || '15');
-    await execFileAsync('yt-dlp', [
+    const baseArgs = [
       '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
       '--cookies', path.join(__dirname, '../youtube-cookies.txt'),
-      '--download-sections', `*${skipMinutes * 60}-inf`,
       '--output', path.join(tmpDir, '%(id)s.%(ext)s'),
       `https://www.youtube.com/watch?v=${videoId}`,
-    ], { timeout: 10800000 }); // 3 hour download timeout
+    ];
+    try {
+      await execFileAsync('yt-dlp', [
+        ...baseArgs.slice(0, -1),
+        '--download-sections', `*${skipMinutes * 60}-inf`,
+        baseArgs[baseArgs.length - 1],
+      ], { timeout: 10800000 });
+    } catch (err) {
+      // DVR/DASH streams don't support --download-sections — retry without it
+      console.log(`  Retrying without section skip (DVR stream)...`);
+      await execFileAsync('yt-dlp', baseArgs, { timeout: 10800000 });
+    }
 
     const files = await rd(tmpDir);
     const audioFile = (await rd(tmpDir)).find(f => /\.(m4a|mp3|webm|ogg|opus|weba)$/.test(f));
