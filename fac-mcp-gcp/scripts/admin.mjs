@@ -95,12 +95,13 @@ async function cmdList() {
   );
   if (rows.length === 0) { console.log('No keys found.'); return; }
 
-  console.log(`\n${'Name'.padEnd(25)} ${'User ID'.padEnd(18)} ${'Active'.padEnd(8)} ${'Requests'.padEnd(10)} ${'Collections'.padEnd(20)} Key`);
-  console.log('─'.repeat(110));
+  console.log(`\n${'Name'.padEnd(25)} ${'User ID'.padEnd(18)} ${'Active'.padEnd(8)} ${'Requests'.padEnd(10)} ${'Collections'.padEnd(20)} ${'Last Used'.padEnd(20)} Key`);
+  console.log('─'.repeat(130));
   for (const r of rows) {
     const status = r.is_active ? '✅' : '❌';
     const scope = r.collection_ids?.length ? r.collection_ids.join(', ') : 'all';
-    console.log(`${r.user_name.padEnd(25)} ${r.user_id.padEnd(18)} ${status.padEnd(8)} ${String(r.request_count).padEnd(10)} ${scope.padEnd(20)} ${r.key.slice(0, 16)}...`);
+    const lastUsed = r.last_used_at ? r.last_used_at.toISOString().slice(0, 19).replace('T', ' ') : 'never';
+    console.log(`${r.user_name.padEnd(25)} ${r.user_id.padEnd(18)} ${status.padEnd(8)} ${String(r.request_count).padEnd(10)} ${scope.padEnd(20)} ${lastUsed.padEnd(20)} ${r.key.slice(0, 16)}...`);
   }
   console.log();
 }
@@ -130,6 +131,14 @@ async function cmdRevoke(key) {
   );
   if (rowCount === 0) { console.log('Key not found.'); return; }
   console.log(`✅ Key revoked: ${key.slice(0, 16)}...`);
+}
+
+async function cmdShowKey(userId) {
+  const { rows } = await pool.query(
+    `SELECT key FROM api_keys WHERE user_id = $1 AND is_active = TRUE`, [userId]
+  );
+  if (rows.length === 0) { console.log('No active key found for that user.'); return; }
+  console.log(`\n   Key: ${rows[0].key}\n`);
 }
 
 async function cmdRevokeUser(userId) {
@@ -268,6 +277,8 @@ try {
     await cmdUsage(rest[0], rest[1]);
   } else if (cmd === 'revoke') {
     await cmdRevoke(rest[0]);
+  } else if (cmd === 'show-key') {
+    await cmdShowKey(rest[0]);
   } else if (cmd === 'revoke-user') {
     await cmdRevokeUser(rest[0]);
   } else if (cmd === 'rotate') {
