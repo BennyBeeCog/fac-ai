@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import { Connector } from '@google-cloud/cloud-sql-connector';
 import { GoogleAuth } from 'google-auth-library';
 import pg from 'pg';
@@ -467,6 +467,121 @@ app.get('/health', async (req, res) => {
     res.json({ status: 'ok', db: 'connected' });
   } catch (err) {
     res.json({ status: 'ok', db: 'connecting' });
+  }
+});
+
+// ── Admin middleware ───────────────────────────────────────────────────────────
+function requireAdmin(req, res, next) {
+  if (req.user?.user_id !== 'admin') {
+    return res.status(403).json({ error: 'Forbidden — admin only' });
+  }
+  next();
+}
+
+// ── Admin routes ───────────────────────────────────────────────────────────────
+app.get('/admin/stats', requireApiKey, requireAdmin, async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const [chunks, docs, activeKeys, requests30d, daily, topUsers, byTool] = await Promise.all([
+      pool.query('SELECT COUNT(*) as total FROM sermon_chunks'),
+      pool.query('SELECT COUNT(DISTINCT filename) as total FROM sermon_chunks'),
+      pool.query('SELECT COUNT(*) as total FROM api_keys WHERE is_active = TRUE'),
+      pool.query(`SELECT COUNT(*) as total FROM usage_logs WHERE timestamp > NOW() - INTERVAL '30 days'`),
+      pool.query(`
+        SELECT TO_CHAR(DATE(timestamp), 'YYYY-MM-DD') as date, COUNT(*) as count
+        FROM usage_logs WHERE timestamp > NOW() - INTERVAL '14 days'
+        GROUP BY DATE(timestamp) ORDER BY date
+      `),
+      pool.query(`
+        SELECT k.user_name, l.user_id, COUNT(*) as requests
+        FROM usage_logs l
+        LEFT JOIN api_keys k ON k.user_id = l.user_id
+        WHERE l.timestamp > NOW() - INTERVAL '30 days'
+        GROUP BY l.user_id, k.user_name ORDER BY requests DESC LIMIT 10
+      `),
+      pool.query(`
+        SELECT tool_name, COUNT(*) as count
+        FROM usage_logs WHERE timestamp > NOW() - INTERVAL '30 days'
+        GROUP BY tool_name ORDER BY count DESC
+      `),
+    ]);
+    res.json({
+      totalChunks: Number(chunks.rows[0].total),
+      totalDocs: Number(docs.rows[0].total),
+      activeKeys: Number(activeKeys.rows[0].total),
+      requestsLast30Days: Number(requests30d.rows[0].total),
+      dailyCounts: daily.rows.map(r => ({ date: r.date, count: Number(r.count) })),
+      topUsers: topUsers.rows.map(r => ({ userId: r.user_id, userName: r.user_name || r.user_id, requests: Number(r.requests) })),
+      byTool: byTool.rows.map(r => ({ tool: r.tool_name, count: Number(r.count) })),
+    });
+  } catch (err) {
+    console.error('[admin/stats]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/admin/keys', requireApiKey, requireAdmin, async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const result = await pool.query(`
+      SELECT key, user_id, user_name, email, created_at, last_used_at,
+             is_active, request_count, notes, collection_ids
+      FROM api_keys ORDER BY created_at DESC
+    `);
+    res.json({ keys: result.rows });
+  } catch (err) {
+    console.error('[admin/keys]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/keys', requireApiKey, requireAdmin, async (req, res) => {
+  const { user_id, user_name, email = '', notes = '', collection_ids = null } = req.body;
+  if (!user_id || !user_name) {
+    return res.status(400).json({ error: 'user_id and user_name are required' });
+  }
+  try {
+    const key = 'fac_' + randomBytes(24).toString('hex');
+    const pool = await getDbPool();
+    await pool.query(
+      `INSERT INTO api_keys (key, user_id, user_name, email, notes, collection_ids)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [key, user_id, user_name, email, notes, collection_ids || null]
+    );
+    res.json({ key, user_id, user_name, email, notes });
+  } catch (err) {
+    console.error('[admin/keys POST]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/keys/:keyId/revoke', requireApiKey, requireAdmin, async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const result = await pool.query(
+      `UPDATE api_keys SET is_active = FALSE WHERE key = $1 RETURNING user_id, user_name`,
+      [req.params.keyId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Key not found' });
+    res.json({ success: true, ...result.rows[0] });
+  } catch (err) {
+    console.error('[admin/keys revoke]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/admin/keys/:keyId/activate', requireApiKey, requireAdmin, async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const result = await pool.query(
+      `UPDATE api_keys SET is_active = TRUE WHERE key = $1 RETURNING user_id, user_name`,
+      [req.params.keyId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Key not found' });
+    res.json({ success: true, ...result.rows[0] });
+  } catch (err) {
+    console.error('[admin/keys activate]', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

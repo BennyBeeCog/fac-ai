@@ -97,16 +97,36 @@ async function initSchema(pool) {
 }
 
 // ── Chunk text ─────────────────────────────────────────────────────────────────
+// Packs whole sentences into ~CHUNK_SIZE windows so chunks never cut mid-thought.
 function chunkText(text) {
+  const sentences = (text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [text])
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const chunks = [];
-  let start = 0;
-  while (start < text.length) {
-    const end = Math.min(start + CHUNK_SIZE, text.length);
-    const chunk = text.slice(start, end).trim();
-    if (chunk.length > 50) chunks.push(chunk);
-    start += CHUNK_SIZE - CHUNK_OVERLAP;
+  let current = [];
+  let currentLen = 0;
+
+  for (const sentence of sentences) {
+    if (currentLen + sentence.length > CHUNK_SIZE && current.length > 0) {
+      chunks.push(current.join(' '));
+
+      // Carry trailing sentences forward as overlap for the next chunk
+      let overlapLen = 0;
+      const overlap = [];
+      for (let i = current.length - 1; i >= 0 && overlapLen < CHUNK_OVERLAP; i--) {
+        overlap.unshift(current[i]);
+        overlapLen += current[i].length;
+      }
+      current = overlap;
+      currentLen = overlapLen;
+    }
+    current.push(sentence);
+    currentLen += sentence.length;
   }
-  return chunks;
+  if (current.length > 0) chunks.push(current.join(' '));
+
+  return chunks.filter(c => c.length > 50);
 }
 
 // ── Embed via Vertex AI text-embedding-005 ─────────────────────────────────────
