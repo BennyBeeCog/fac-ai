@@ -19,6 +19,7 @@ const DB_PASSWORD = process.env.DB_PASSWORD;
 
 const GCP_PROJECT_ID = process.env.GCP_PROJECT_ID;
 const GCP_REGION = process.env.GCP_REGION || 'us-central1';
+const COLLECTION_ID = process.env.COLLECTION_ID || 'fac-sermons';
 const VERTEX_REGION = 'us-central1'; // text-embedding-005 not available in all regions
 const EMBEDDING_MODEL = 'text-embedding-005';
 
@@ -50,13 +51,14 @@ async function getDbPool() {
     });
     console.log('[db] Connected via Cloud SQL connector:', CLOUD_SQL_CONNECTION_NAME);
   } else {
+    const isProxy = (DB_HOST || '127.0.0.1') === '127.0.0.1';
     dbPool = new Pool({
       host: DB_HOST,
       database: DB_NAME,
       user: DB_USER,
       password: DB_PASSWORD,
       port: 5432,
-      ssl: { rejectUnauthorized: false },
+      ssl: isProxy ? false : { rejectUnauthorized: false },
       max: 5,
       idleTimeoutMillis: 30000,
     });
@@ -89,20 +91,42 @@ async function initSchema(pool) {
     CREATE INDEX IF NOT EXISTS sermon_chunks_file_key_idx
     ON sermon_chunks (file_key)
   `);
+  await pool.query(`ALTER TABLE sermon_chunks ADD COLUMN IF NOT EXISTS collection_id TEXT DEFAULT 'fac-sermons'`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS sermon_chunks_collection_idx ON sermon_chunks (collection_id)`);
   console.log('[db] Schema ready');
 }
 
 // ── Chunk text ─────────────────────────────────────────────────────────────────
+// Packs whole sentences into ~CHUNK_SIZE windows so chunks never cut mid-thought.
 function chunkText(text) {
+  const sentences = (text.match(/[^.!?\n]+[.!?\n]+|[^.!?\n]+$/g) || [text])
+    .map(s => s.trim())
+    .filter(Boolean);
+
   const chunks = [];
-  let start = 0;
-  while (start < text.length) {
-    const end = Math.min(start + CHUNK_SIZE, text.length);
-    const chunk = text.slice(start, end).trim();
-    if (chunk.length > 50) chunks.push(chunk);
-    start += CHUNK_SIZE - CHUNK_OVERLAP;
+  let current = [];
+  let currentLen = 0;
+
+  for (const sentence of sentences) {
+    if (currentLen + sentence.length > CHUNK_SIZE && current.length > 0) {
+      chunks.push(current.join(' '));
+
+      // Carry trailing sentences forward as overlap for the next chunk
+      let overlapLen = 0;
+      const overlap = [];
+      for (let i = current.length - 1; i >= 0 && overlapLen < CHUNK_OVERLAP; i--) {
+        overlap.unshift(current[i]);
+        overlapLen += current[i].length;
+      }
+      current = overlap;
+      currentLen = overlapLen;
+    }
+    current.push(sentence);
+    currentLen += sentence.length;
   }
-  return chunks;
+  if (current.length > 0) chunks.push(current.join(' '));
+
+  return chunks.filter(c => c.length > 50);
 }
 
 // ── Embed via Vertex AI text-embedding-005 ─────────────────────────────────────
@@ -173,9 +197,9 @@ async function ingestFile(pool, fileKey, filename) {
     for (let i = 0; i < chunks.length; i++) {
       const embedding = await embedText(chunks[i]);
       await client.query(
-        `INSERT INTO sermon_chunks (file_key, filename, chunk_index, content, embedding)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [fileKey, filename, i, chunks[i], JSON.stringify(embedding)]
+        `INSERT INTO sermon_chunks (file_key, filename, chunk_index, content, embedding, collection_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [fileKey, filename, i, chunks[i], JSON.stringify(embedding), COLLECTION_ID]
       );
 
       if ((i + 1) % 10 === 0 || i === chunks.length - 1) {
@@ -194,7 +218,7 @@ async function ingestFile(pool, fileKey, filename) {
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function main() {
-  console.log(`FAC Ingestion Job starting — MODE=${MODE}, embedding=${EMBEDDING_MODEL} via Vertex AI`);
+  console.log(`FAC Ingestion Job starting — MODE=${MODE}, collection=${COLLECTION_ID}, embedding=${EMBEDDING_MODEL} via Vertex AI`);
 
   const pool = await getDbPool();
   await initSchema(pool);
@@ -213,7 +237,7 @@ async function main() {
     try {
       if (!FORCE) {
         const existing = await pool.query(
-          'SELECT 1 FROM sermon_chunks WHERE file_key = $1 LIMIT 1', [key]
+          'SELECT 1 FROM sermon_chunks WHERE file_key = $1 AND collection_id = $2 LIMIT 1', [key, COLLECTION_ID]
         );
         if (existing.rows.length > 0) {
           console.log(`${pos} Skipping — already ingested: ${filename}`);

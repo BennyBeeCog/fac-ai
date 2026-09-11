@@ -3,3 +3,5 @@ node_modules/
 *.log
 .DS_Store
 youtube-cookies.txt
+fac-mcp-server/
+woodward-docs/

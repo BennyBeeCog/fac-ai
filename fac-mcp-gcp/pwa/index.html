@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FAC Admin">
+<meta name="theme-color" content="#0a0f1e">
+<title>FAC Admin</title>
+<link rel="manifest" href="./manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root {
+  --bg: #0a0f1e;
+  --surface: #111827;
+  --card: #1a2540;
+  --border: #253060;
+  --accent: #6366f1;
+  --accent-light: #818cf8;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --good: #22c55e;
+  --warn: #f59e0b;
+  --bad: #ef4444;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ── Layout ── */
+#app { display: flex; flex-direction: column; height: 100dvh; }
+#main { flex: 1; overflow-y: auto; padding: 16px 16px 0; }
+#nav {
+  display: flex;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  padding-bottom: var(--safe-bottom);
+  flex-shrink: 0;
+}
+.nav-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 10px 0; border: none; background: none;
+  color: var(--muted); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer;
+  transition: color .15s;
+}
+.nav-btn.active { color: var(--accent-light); }
+.nav-btn svg { width: 22px; height: 22px; }
+
+/* ── Screen ── */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ── Unlock ── */
+#unlock-screen {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 100%; gap: 24px;
+  padding: 32px 24px;
+}
+.logo {
+  width: 72px; height: 72px; border-radius: 18px;
+  background: linear-gradient(135deg, #312e81, #6366f1);
+  display: flex; align-items: center; justify-content: center;
+}
+.logo svg { width: 40px; height: 40px; color: white; }
+.unlock-title { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; text-align: center; }
+.unlock-sub { color: var(--muted); font-size: 14px; text-align: center; }
+.unlock-form { width: 100%; max-width: 360px; display: flex; flex-direction: column; gap: 12px; }
+.input-group { display: flex; flex-direction: column; gap: 6px; }
+label { font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; text-transform: uppercase; }
+input, select, textarea {
+  background: var(--card); border: 1px solid var(--border);
+  color: var(--text); border-radius: 10px; padding: 12px 14px;
+  font: inherit; font-size: 14px; outline: none; width: 100%;
+  transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+textarea { resize: vertical; min-height: 72px; }
+
+/* ── Buttons ── */
+.btn {
+  border: none; border-radius: 10px; padding: 13px 20px;
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  transition: opacity .15s; width: 100%;
+}
+.btn-primary { background: var(--accent); color: white; }
+.btn-danger { background: var(--bad); color: white; }
+.btn-success { background: var(--good); color: white; }
+.btn-ghost { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+.btn:active { opacity: .8; }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn-sm { padding: 7px 14px; font-size: 12px; font-weight: 600; border-radius: 8px; width: auto; }
+
+/* ── Cards ── */
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 16px;
+}
+.section-title {
+  font-size: 11px; font-weight: 700; color: var(--muted);
+  letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px;
+}
+
+/* ── Stat tiles ── */
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+.stat-tile {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px;
+}
+.stat-label { font-size: 11px; color: var(--muted); font-weight: 500; margin-bottom: 6px; }
+.stat-value { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.stat-value.accent { color: var(--accent-light); }
+
+/* ── Chart ── */
+.chart-wrap { margin-bottom: 16px; }
+canvas#chart { width: 100%; height: 80px; display: block; }
+
+/* ── Top users ── */
+.user-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.user-row:last-child { border-bottom: none; }
+.user-avatar {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: linear-gradient(135deg, #312e81, #6366f1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: white; flex-shrink: 0;
+}
+.user-name { font-size: 14px; font-weight: 600; }
+.user-id { font-size: 11px; color: var(--muted); }
+.user-count { margin-left: auto; font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--accent-light); }
+
+/* ── Tool pills ── */
+.tool-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.tool-pill {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 100px; padding: 5px 12px; font-size: 12px; font-weight: 500;
+}
+.tool-pill span { color: var(--accent-light); font-weight: 700; margin-left: 4px; }
+
+/* ── Keys list ── */
+.key-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 14px; margin-bottom: 10px;
+}
+.key-card.revoked { opacity: 0.55; }
+.key-header { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 8px; }
+.key-status-dot {
+  width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0;
+}
+.key-status-dot.active { background: var(--good); }
+.key-status-dot.revoked { background: var(--bad); }
+.key-name { font-size: 15px; font-weight: 600; }
+.key-uid { font-size: 11px; color: var(--muted); }
+.key-value {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 11px;
+  color: var(--muted); background: var(--surface); border-radius: 6px;
+  padding: 5px 8px; margin-bottom: 8px; word-break: break-all;
+  cursor: pointer; user-select: all;
+}
+.key-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.key-meta strong { color: var(--text); }
+.key-actions { display: flex; gap: 8px; }
+.key-search {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 14px; font: inherit; font-size: 14px;
+  color: var(--text); outline: none; width: 100%; margin-bottom: 12px;
+  transition: border-color .15s;
+}
+.key-search:focus { border-color: var(--accent); }
+
+/* ── Add form ── */
+.add-form { display: flex; flex-direction: column; gap: 14px; }
+.result-box {
+  background: #0f2a1a; border: 1px solid #22c55e44;
+  border-radius: 12px; padding: 14px; display: none; gap: 8px; flex-direction: column;
+}
+.result-box.visible { display: flex; }
+.result-key {
+  font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px;
+  color: var(--good); word-break: break-all; cursor: pointer; user-select: all;
+}
+.result-hint { font-size: 12px; color: var(--muted); }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; bottom: calc(68px + var(--safe-bottom) + 12px); left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: #1e2d4f; border: 1px solid var(--border);
+  color: var(--text); border-radius: 100px; padding: 9px 20px;
+  font-size: 13px; font-weight: 500; white-space: nowrap;
+  opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; z-index: 99;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ── Spinner ── */
+.spinner {
+  width: 20px; height: 20px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .6s linear infinite; margin: 32px auto; display: block;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ── */
+.empty { text-align: center; color: var(--muted); padding: 32px 0; font-size: 14px; }
+
+/* ── Scroll pad ── */
+.scroll-pad { height: 20px; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- ── Unlock screen ── -->
+  <div id="unlock-wrap" style="flex:1;overflow-y:auto;">
+    <div id="unlock-screen">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div>
+        <div class="unlock-title">FAC Admin</div>
+        <div class="unlock-sub" style="margin-top:6px;">Enter your admin API key to continue</div>
+      </div>
+      <div class="unlock-form">
+        <div class="input-group">
+          <label>Admin API Key</label>
+          <input id="key-input" type="password" placeholder="fac_..." autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false">
+        </div>
+        <button class="btn btn-primary" id="unlock-btn" onclick="unlock()">Unlock</button>
+        <div id="unlock-error" style="color:var(--bad);font-size:13px;text-align:center;display:none;">Invalid key or connection error.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Main app (hidden until unlocked) ── -->
+  <div id="main" hidden>
+
+    <!-- Dashboard screen -->
+    <div class="screen active" id="screen-dash">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;">Dashboard</div>
+        <button onclick="loadStats()" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
+      </div>
+      <div id="dash-content"><div class="spinner"></div></div>
+      <div class="scroll-pad"></div>
+    </div>
+
+    <!-- Keys screen -->
+    <div class="screen" id="screen-keys">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;">API Keys</div>
+        <button onclick="loadKeys()" style="background:none;border:none;color:var(--muted);cursor:pointer;padding:4px;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </button>
+      </div>
+      <input class="key-search" id="key-search" type="search" placeholder="Search by name or user ID…" oninput="filterKeys()">
+      <div id="keys-content"><div class="spinner"></div></div>
+      <div class="scroll-pad"></div>
+    </div>
+
+    <!-- Add Key screen -->
+    <div class="screen" id="screen-add">
+      <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin-bottom:20px;">New API Key</div>
+      <div class="add-form">
+        <div class="input-group">
+          <label>Name *</label>
+          <input id="new-name" type="text" placeholder="e.g. John Smith" autocorrect="off">
+        </div>
+        <div class="input-group">
+          <label>User ID *</label>
+          <input id="new-uid" type="text" placeholder="e.g. john_smith" autocorrect="off" autocapitalize="none">
+        </div>
+        <div class="input-group">
+          <label>Email</label>
+          <input id="new-email" type="email" placeholder="john@example.com">
+        </div>
+        <div class="input-group">
+          <label>Notes</label>
+          <textarea id="new-notes" placeholder="Optional notes…"></textarea>
+        </div>
+        <div class="input-group">
+          <label>Collections (leave blank for all)</label>
+          <input id="new-cols" type="text" placeholder="e.g. fac-sermons, woodward" autocorrect="off" autocapitalize="none">
+        </div>
+        <button class="btn btn-primary" id="create-btn" onclick="createKey()">Generate Key</button>
+
+        <div class="result-box" id="result-box">
+          <div style="font-size:13px;font-weight:600;color:var(--good);">Key created — copy it now!</div>
+          <div class="result-key" id="result-key" onclick="copyResult()"></div>
+          <div class="result-hint">Tap the key to copy. It won't be shown again.</div>
+          <button class="btn btn-ghost" onclick="clearForm()">Create Another</button>
+        </div>
+      </div>
+      <div class="scroll-pad"></div>
+    </div>
+
+  </div><!-- /#main -->
+
+  <!-- Bottom nav -->
+  <nav id="nav" hidden>
+    <button class="nav-btn active" onclick="goTab('dash')" id="nav-dash">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+      </svg>
+      Stats
+    </button>
+    <button class="nav-btn" onclick="goTab('keys')" id="nav-keys">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="7.5" cy="15.5" r="5.5"/><path d="M21 2l-9.6 9.6"/><path d="M15.5 7.5l3 3L22 7l-3-3"/>
+      </svg>
+      Keys
+    </button>
+    <button class="nav-btn" onclick="goTab('add')" id="nav-add">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+      </svg>
+      Add Key
+    </button>
+    <button class="nav-btn" onclick="signOut()" id="nav-out">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+      Sign Out
+    </button>
+  </nav>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = 'https://mcp.facmcp.com';
+let adminKey = '';
+let allKeys = [];
+let currentTab = 'dash';
+
+// ── Persistence ────────────────────────────────────────────────────────────────
+function saveKey(k) {
+  try { localStorage.setItem('fac_admin_key', k); } catch(e) {}
+}
+function loadSavedKey() {
+  try { return localStorage.getItem('fac_admin_key') || ''; } catch(e) { return ''; }
+}
+function clearSavedKey() {
+  try { localStorage.removeItem('fac_admin_key'); } catch(e) {}
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+// ── API helpers ────────────────────────────────────────────────────────────────
+async function apiFetch(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: {
+      'x-api-key': adminKey,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Unlock ─────────────────────────────────────────────────────────────────────
+async function unlock() {
+  const keyVal = document.getElementById('key-input').value.trim();
+  if (!keyVal) return;
+  const btn = document.getElementById('unlock-btn');
+  const err = document.getElementById('unlock-error');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  err.style.display = 'none';
+  try {
+    adminKey = keyVal;
+    await apiFetch('/admin/stats');
+    saveKey(keyVal);
+    showApp();
+  } catch(e) {
+    adminKey = '';
+    err.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'Unlock';
+  }
+}
+
+function showApp() {
+  document.getElementById('unlock-wrap').style.display = 'none';
+  document.getElementById('main').hidden = false;
+  document.getElementById('nav').hidden = false;
+  goTab('dash');
+}
+
+function signOut() {
+  clearSavedKey();
+  adminKey = '';
+  document.getElementById('unlock-wrap').style.display = '';
+  document.getElementById('main').hidden = true;
+  document.getElementById('nav').hidden = true;
+  document.getElementById('key-input').value = '';
+  document.getElementById('unlock-btn').disabled = false;
+  document.getElementById('unlock-btn').textContent = 'Unlock';
+}
+
+// ── Tabs ───────────────────────────────────────────────────────────────────────
+function goTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + tab).classList.add('active');
+  document.getElementById('nav-' + tab).classList.add('active');
+  if (tab === 'dash') loadStats();
+  if (tab === 'keys') loadKeys();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadStats() {
+  const el = document.getElementById('dash-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await apiFetch('/admin/stats');
+    el.innerHTML = renderDash(d);
+    drawChart(d.dailyCounts || []);
+  } catch(e) {
+    el.innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
+function renderDash(d) {
+  const toolsHtml = (d.byTool || []).map(t =>
+    `<div class="tool-pill">${t.tool || 'unknown'}<span>${t.count}</span></div>`
+  ).join('');
+
+  const usersHtml = (d.topUsers || []).slice(0, 8).map(u => {
+    const initials = (u.userName || u.userId || '?').slice(0,2).toUpperCase();
+    return `
+      <div class="user-row">
+        <div class="user-avatar">${initials}</div>
+        <div>
+          <div class="user-name">${escHtml(u.userName || u.userId)}</div>
+          <div class="user-id">${escHtml(u.userId)}</div>
+        </div>
+        <div class="user-count">${u.requests}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-label">Documents</div>
+        <div class="stat-value">${fmt(d.totalDocs)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Chunks</div>
+        <div class="stat-value">${fmt(d.totalChunks)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Active Keys</div>
+        <div class="stat-value accent">${fmt(d.activeKeys)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Requests / 30d</div>
+        <div class="stat-value accent">${fmt(d.requestsLast30Days)}</div>
+      </div>
+    </div>
+
+    <div class="chart-wrap card" style="margin-bottom:16px;">
+      <div class="section-title" style="margin-bottom:10px;">Daily Requests — Last 14 Days</div>
+      <canvas id="chart"></canvas>
+    </div>
+
+    ${toolsHtml ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">By Tool</div>
+      <div class="tool-pills">${toolsHtml}</div>
+    </div>` : ''}
+
+    ${usersHtml ? `
+    <div class="card">
+      <div class="section-title">Top Users — Last 30 Days</div>
+      ${usersHtml}
+    </div>` : ''}
+  `;
+}
+
+function drawChart(dailyCounts) {
+  const canvas = document.getElementById('chart');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.parentElement.clientWidth - 32;
+  const H = 80;
+  canvas.width = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Fill last 14 days
+  const today = new Date();
+  const dates = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    dates.push(d.toISOString().slice(0, 10));
+  }
+  const countMap = {};
+  (dailyCounts || []).forEach(r => { countMap[r.date] = r.count; });
+  const counts = dates.map(d => countMap[d] || 0);
+  const maxVal = Math.max(...counts, 1);
+
+  const barW = Math.floor((W - 2) / counts.length) - 2;
+  const gap = (W - barW * counts.length) / (counts.length + 1);
+
+  // Grid line
+  ctx.strokeStyle = '#253060';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, H - 16);
+  ctx.lineTo(W, H - 16);
+  ctx.stroke();
+
+  counts.forEach((v, i) => {
+    const barH = Math.max(2, ((v / maxVal) * (H - 24)));
+    const x = gap + i * (barW + gap);
+    const y = H - 16 - barH;
+
+    // Bar fill
+    const grad = ctx.createLinearGradient(0, y, 0, H - 16);
+    grad.addColorStop(0, '#6366f1cc');
+    grad.addColorStop(1, '#6366f144');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.roundRect(x, y, barW, barH, [3, 3, 0, 0]);
+    ctx.fill();
+
+    // Date label (every other)
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#64748b';
+      ctx.font = `${9 * dpr / dpr}px Inter, system-ui`;
+      ctx.textAlign = 'center';
+      const parts = dates[i].slice(5).split('-');
+      ctx.fillText(`${parts[1]}/${parts[0]}`, x + barW / 2, H - 2);
+    }
+  });
+}
+
+// ── Keys ───────────────────────────────────────────────────────────────────────
+async function loadKeys() {
+  const el = document.getElementById('keys-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await apiFetch('/admin/keys');
+    allKeys = d.keys || [];
+    renderKeys(allKeys);
+  } catch(e) {
+    el.innerHTML = `<div class="empty">${e.message}</div>`;
+  }
+}
+
+function filterKeys() {
+  const q = document.getElementById('key-search').value.toLowerCase();
+  const filtered = q
+    ? allKeys.filter(k => (k.user_name || '').toLowerCase().includes(q) || (k.user_id || '').toLowerCase().includes(q))
+    : allKeys;
+  renderKeys(filtered);
+}
+
+function renderKeys(keys) {
+  const el = document.getElementById('keys-content');
+  if (!keys.length) { el.innerHTML = '<div class="empty">No keys found</div>'; return; }
+
+  el.innerHTML = keys.map(k => {
+    const isActive = k.is_active;
+    const lastUsed = k.last_used_at ? relTime(new Date(k.last_used_at)) : 'Never';
+    const created = k.created_at ? new Date(k.created_at).toLocaleDateString() : '';
+    const cols = k.collection_ids?.length ? k.collection_ids.join(', ') : 'All';
+    const truncKey = k.key.slice(0, 12) + '…' + k.key.slice(-6);
+
+    return `
+      <div class="key-card ${isActive ? '' : 'revoked'}">
+        <div class="key-header">
+          <div class="key-status-dot ${isActive ? 'active' : 'revoked'}"></div>
+          <div style="flex:1">
+            <div class="key-name">${escHtml(k.user_name)}</div>
+            <div class="key-uid">${escHtml(k.user_id)}</div>
+          </div>
+          <div style="text-align:right;font-size:12px;color:var(--muted)">${fmt(k.request_count)} reqs</div>
+        </div>
+        <div class="key-value" onclick="copyText('${escHtml(k.key)}')" title="Tap to copy">${truncKey}</div>
+        <div class="key-meta">
+          <span>Created <strong>${created}</strong></span>
+          <span>Last used <strong>${lastUsed}</strong></span>
+          <span>Collections <strong>${escHtml(cols)}</strong></span>
+          ${k.notes ? `<span>${escHtml(k.notes)}</span>` : ''}
+        </div>
+        <div class="key-actions">
+          ${isActive
+            ? `<button class="btn btn-danger btn-sm" onclick="revokeKey('${k.key}', this)">Revoke</button>`
+            : `<button class="btn btn-success btn-sm" onclick="activateKey('${k.key}', this)">Activate</button>`
+          }
+          <button class="btn btn-ghost btn-sm" onclick="copyText('${escHtml(k.key)}')">Copy Key</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function revokeKey(key, btn) {
+  if (!confirm('Revoke this API key? The user will lose access immediately.')) return;
+  btn.disabled = true;
+  try {
+    await apiFetch(`/admin/keys/${encodeURIComponent(key)}/revoke`, { method: 'POST' });
+    toast('Key revoked');
+    loadKeys();
+  } catch(e) {
+    toast('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+async function activateKey(key, btn) {
+  btn.disabled = true;
+  try {
+    await apiFetch(`/admin/keys/${encodeURIComponent(key)}/activate`, { method: 'POST' });
+    toast('Key activated');
+    loadKeys();
+  } catch(e) {
+    toast('Error: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
+// ── Add Key ────────────────────────────────────────────────────────────────────
+async function createKey() {
+  const name = document.getElementById('new-name').value.trim();
+  const uid = document.getElementById('new-uid').value.trim();
+  const email = document.getElementById('new-email').value.trim();
+  const notes = document.getElementById('new-notes').value.trim();
+  const colsRaw = document.getElementById('new-cols').value.trim();
+
+  if (!name || !uid) { toast('Name and User ID are required'); return; }
+
+  const collection_ids = colsRaw
+    ? colsRaw.split(',').map(s => s.trim()).filter(Boolean)
+    : null;
+
+  const btn = document.getElementById('create-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating…';
+
+  try {
+    const d = await apiFetch('/admin/keys', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: uid, user_name: name, email, notes, collection_ids }),
+    });
+    document.getElementById('result-key').textContent = d.key;
+    document.getElementById('result-box').classList.add('visible');
+    btn.style.display = 'none';
+  } catch(e) {
+    toast('Error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Generate Key';
+  }
+}
+
+function clearForm() {
+  ['new-name','new-uid','new-email','new-notes','new-cols'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('result-box').classList.remove('visible');
+  const btn = document.getElementById('create-btn');
+  btn.style.display = '';
+  btn.disabled = false;
+  btn.textContent = 'Generate Key';
+}
+
+function copyResult() {
+  const key = document.getElementById('result-key').textContent;
+  copyText(key);
+}
+
+// ── Utils ──────────────────────────────────────────────────────────────────────
+function copyText(text) {
+  navigator.clipboard?.writeText(text).then(() => toast('Copied!')).catch(() => toast('Copy failed'));
+}
+
+function escHtml(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmt(n) {
+  return Number(n || 0).toLocaleString();
+}
+
+function relTime(date) {
+  const diff = Date.now() - date.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return date.toLocaleDateString();
+}
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────────
+document.getElementById('key-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') unlock();
+});
+
+// Auto-unlock if saved key exists
+(function boot() {
+  const saved = loadSavedKey();
+  if (saved) {
+    adminKey = saved;
+    apiFetch('/admin/stats')
+      .then(() => showApp())
+      .catch(() => { adminKey = ''; clearSavedKey(); });
+  }
+})();
+
+// Service worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
+}
+</script>
+</body>
+</html>
