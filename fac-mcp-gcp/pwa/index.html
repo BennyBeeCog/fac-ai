@@ -223,6 +223,12 @@ canvas.chart { width: 100%; height: 80px; display: block; }
   text-transform: uppercase; display: flex; justify-content: space-between; padding: 4px 0;
 }
 .doc-row .doc-day { color: var(--accent-light); font-weight: 600; }
+.coverage { font-variant-numeric: tabular-nums; }
+.coverage.good { color: var(--good); }
+.coverage.warn { color: var(--warn); }
+.coverage.bad { color: var(--bad); }
+.month-empty { font-size: 12px; color: var(--muted); padding: 2px 0 8px; }
+.cov-legend { font-size: 11px; color: var(--muted); margin: -4px 0 10px; }
 
 /* ── Add form ── */
 .add-form { display: flex; flex-direction: column; gap: 14px; }
@@ -732,6 +738,29 @@ function docTitle(filename) {
   return t.replace(/[＂"]/g, '').replace(/｜/g, '|').replace(/？/g, '?').trim() || filename;
 }
 
+// Expected services: Sunday morning + Sunday night + Wednesday night.
+// The current month only counts services up to today.
+function expectedServices(year, month) {
+  const today = new Date();
+  const last = new Date(year, month, 0).getDate();
+  let n = 0;
+  for (let d = 1; d <= last; d++) {
+    const date = new Date(year, month - 1, d);
+    if (date > today) break;
+    const dow = date.getDay();
+    if (dow === 0) n += 2;
+    else if (dow === 3) n += 1;
+  }
+  return n;
+}
+
+function coverageHtml(actual, expected) {
+  if (!expected) return `<span class="coverage">${actual}</span>`;
+  const pct = actual / expected;
+  const cls = pct >= 0.9 ? 'good' : pct >= 0.5 ? 'warn' : 'bad';
+  return `<span class="coverage ${cls}">${actual} / ${expected}</span>`;
+}
+
 function renderDocsByDate(docs, names, expandAll) {
   const years = {};
   const undated = [];
@@ -752,23 +781,40 @@ function renderDocsByDate(docs, names, expandAll) {
 
   const group = (id, label, count, body) => `
     <details class="year-group" ${expandAll || openYears.has(id) ? 'open' : ''} ontoggle="toggleYear('${id}', this.open)">
-      <summary>${label}<span class="count">${fmt(count)}</span></summary>
+      <summary>${label}${count == null ? '' : `<span class="count">${fmt(count)}</span>`}</summary>
       ${body}
     </details>`;
+
+  // Expected counts only make sense when looking at the whole archive, not search results
+  const showExpected = !expandAll;
+  const now = new Date();
 
   let html = Object.keys(years).sort((a, b) => b - a).map(y => {
     const months = years[y];
     const total = Object.values(months).reduce((n, list) => n + list.length, 0);
-    const body = Object.keys(months).sort((a, b) => b - a).map(m => {
-      const list = months[m].sort((a, b) => b.dt.key.localeCompare(a.dt.key));
+    const lastMonth = Number(y) === now.getFullYear() ? now.getMonth() + 1 : 12;
+    const monthNums = showExpected
+      ? Array.from({ length: lastMonth }, (_, i) => lastMonth - i)
+      : Object.keys(months).map(Number).sort((a, b) => b - a);
+
+    let yearExpected = 0;
+    const body = monthNums.map(m => {
+      const list = (months[m] || []).sort((a, b) => b.dt.key.localeCompare(a.dt.key));
+      const expected = showExpected ? expectedServices(Number(y), m) : 0;
+      yearExpected += expected;
       return `
         <div class="month-block">
-          <div class="month-title"><span>${MONTHS[m - 1]}</span><span>${list.length}</span></div>
-          ${list.map(d => row(d, d.dt)).join('')}
+          <div class="month-title"><span>${MONTHS[m - 1]}</span>${coverageHtml(list.length, expected)}</div>
+          ${list.length ? list.map(d => row(d, d.dt)).join('') : '<div class="month-empty">No sermons</div>'}
         </div>`;
     }).join('');
-    return group(y, y, total, body);
+    const label = `${y}<span class="count" style="margin-left:auto;">${coverageHtml(total, yearExpected)}</span>`;
+    return group(y, label, null, body);
   }).join('');
+
+  if (showExpected && html) {
+    html = `<div class="cov-legend">Sermons / expected services (Sun AM + Sun PM + Wed PM)</div>` + html;
+  }
 
   if (undated.length) {
     const body = `<div class="month-block">${undated.map(d => row(d, null)).join('')}</div>`;
