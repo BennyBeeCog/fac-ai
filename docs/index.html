@@ -124,7 +124,20 @@ textarea { resize: vertical; min-height: 72px; }
 
 /* ── Chart ── */
 .chart-wrap { margin-bottom: 16px; }
-canvas#chart { width: 100%; height: 80px; display: block; }
+canvas.chart { width: 100%; height: 80px; display: block; }
+
+/* ── Person usage ── */
+.user-row.tappable { cursor: pointer; }
+.user-row.tappable:active { opacity: .7; }
+.back-btn {
+  background: none; border: none; color: var(--accent-light); font: inherit;
+  font-size: 14px; font-weight: 600; cursor: pointer; padding: 4px 0; margin-bottom: 12px;
+}
+.query-row { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.query-row:last-child { border-bottom: none; }
+.query-text { font-size: 14px; line-height: 1.4; word-break: break-word; }
+.query-meta { display: flex; flex-wrap: wrap; gap: 8px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+.query-meta .fail { color: var(--bad); font-weight: 600; }
 
 /* ── Top users ── */
 .user-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -271,6 +284,13 @@ canvas#chart { width: 100%; height: 80px; display: block; }
       <div class="scroll-pad"></div>
     </div>
 
+    <!-- Person usage screen -->
+    <div class="screen" id="screen-user">
+      <button class="back-btn" onclick="goTab(userBackTab)">‹ Back</button>
+      <div id="user-content"><div class="spinner"></div></div>
+      <div class="scroll-pad"></div>
+    </div>
+
     <!-- Add Key screen -->
     <div class="screen" id="screen-add">
       <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin-bottom:20px;">New API Key</div>
@@ -346,6 +366,7 @@ const API = 'https://mcp.facmcp.com';
 let adminKey = '';
 let allKeys = [];
 let currentTab = 'dash';
+let userBackTab = 'dash';
 
 // ── Persistence ────────────────────────────────────────────────────────────────
 function saveKey(k) {
@@ -431,7 +452,7 @@ function goTab(tab) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('screen-' + tab).classList.add('active');
-  document.getElementById('nav-' + tab).classList.add('active');
+  document.getElementById('nav-' + tab)?.classList.add('active');
   if (tab === 'dash') loadStats();
   if (tab === 'keys') loadKeys();
 }
@@ -443,7 +464,7 @@ async function loadStats() {
   try {
     const d = await apiFetch('/admin/stats');
     el.innerHTML = renderDash(d);
-    drawChart(d.dailyCounts || []);
+    drawChart('chart', d.dailyCounts || []);
   } catch(e) {
     el.innerHTML = `<div class="empty">${e.message}</div>`;
   }
@@ -457,7 +478,7 @@ function renderDash(d) {
   const usersHtml = (d.topUsers || []).slice(0, 8).map(u => {
     const initials = (u.userName || u.userId || '?').slice(0,2).toUpperCase();
     return `
-      <div class="user-row">
+      <div class="user-row tappable" onclick="openUser('${escHtml(u.userId)}')">
         <div class="user-avatar">${initials}</div>
         <div>
           <div class="user-name">${escHtml(u.userName || u.userId)}</div>
@@ -489,7 +510,7 @@ function renderDash(d) {
 
     <div class="chart-wrap card" style="margin-bottom:16px;">
       <div class="section-title" style="margin-bottom:10px;">Daily Requests — Last 14 Days</div>
-      <canvas id="chart"></canvas>
+      <canvas class="chart" id="chart"></canvas>
     </div>
 
     ${toolsHtml ? `
@@ -500,14 +521,14 @@ function renderDash(d) {
 
     ${usersHtml ? `
     <div class="card">
-      <div class="section-title">Top Users — Last 30 Days</div>
+      <div class="section-title">Top Users — Last 30 Days · tap for details</div>
       ${usersHtml}
     </div>` : ''}
   `;
 }
 
-function drawChart(dailyCounts) {
-  const canvas = document.getElementById('chart');
+function drawChart(canvasId, dailyCounts) {
+  const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.parentElement.clientWidth - 32;
@@ -568,6 +589,100 @@ function drawChart(dailyCounts) {
   });
 }
 
+// ── Person usage ──────────────────────────────────────────────────────────────
+async function openUser(userId) {
+  if (currentTab !== 'user') userBackTab = currentTab;
+  goTab('user');
+  document.getElementById('main').scrollTop = 0;
+  const el = document.getElementById('user-content');
+  el.innerHTML = '<div class="spinner"></div>';
+  try {
+    const d = await apiFetch(`/admin/usage/${encodeURIComponent(userId)}`);
+    el.innerHTML = renderUser(d);
+    drawChart('user-chart', d.dailyCounts || []);
+  } catch(e) {
+    el.innerHTML = `<div class="empty">${escHtml(e.message)}</div>`;
+  }
+}
+
+function renderUser(d) {
+  const toolsHtml = (d.byTool || []).map(t =>
+    `<div class="tool-pill">${escHtml(t.tool || 'unknown')}<span>${fmt(t.count)}</span></div>`
+  ).join('');
+
+  const recentHtml = (d.recent || []).map(r => {
+    const text = r.query ? escHtml(r.query) : `<span style="color:var(--muted)">(${escHtml(r.tool_name)})</span>`;
+    return `
+      <div class="query-row">
+        <div class="query-text">${text}</div>
+        <div class="query-meta">
+          <span>${new Date(r.timestamp).toLocaleString()}</span>
+          <span>${escHtml(r.tool_name)}</span>
+          ${r.collection_id ? `<span>${escHtml(r.collection_id)}</span>` : ''}
+          ${r.response_time_ms != null ? `<span>${fmt(r.response_time_ms)} ms</span>` : ''}
+          ${r.success ? '' : '<span class="fail">failed</span>'}
+        </div>
+      </div>`;
+  }).join('');
+
+  const initials = (d.userName || d.userId || '?').slice(0,2).toUpperCase();
+  const lastUsed = d.lastUsed ? relTime(new Date(d.lastUsed)) : 'Never';
+
+  return `
+    <div class="user-row" style="margin-bottom:12px;">
+      <div class="user-avatar">${initials}</div>
+      <div>
+        <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;">${escHtml(d.userName)}</div>
+        <div class="user-id">${escHtml(d.userId)}${d.email ? ' · ' + escHtml(d.email) : ''}</div>
+      </div>
+    </div>
+
+    <div class="stat-grid">
+      <div class="stat-tile">
+        <div class="stat-label">Total Requests</div>
+        <div class="stat-value accent">${fmt(d.totalRequests)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Last Used</div>
+        <div class="stat-value" style="font-size:20px;">${lastUsed}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Last 7 Days</div>
+        <div class="stat-value">${fmt(d.last7)}</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Last 30 Days</div>
+        <div class="stat-value">${fmt(d.last30)}</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title" style="margin-bottom:10px;">Daily Requests — Last 14 Days</div>
+      <canvas class="chart" id="user-chart"></canvas>
+    </div>
+
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">Details</div>
+      <div class="key-meta" style="margin-bottom:0;">
+        <span>Keys <strong>${d.activeKeyCount} active / ${d.keyCount}</strong></span>
+        <span>Avg response <strong>${d.avgMs != null ? fmt(d.avgMs) + ' ms' : '—'}</strong></span>
+        <span>Failures <strong>${fmt(d.failures)}</strong></span>
+      </div>
+    </div>
+
+    ${toolsHtml ? `
+    <div class="card" style="margin-bottom:16px;">
+      <div class="section-title">By Tool — All Time</div>
+      <div class="tool-pills">${toolsHtml}</div>
+    </div>` : ''}
+
+    <div class="card">
+      <div class="section-title">Recent Queries</div>
+      ${recentHtml || '<div class="empty" style="padding:12px 0;">No logged activity</div>'}
+    </div>
+  `;
+}
+
 // ── Keys ───────────────────────────────────────────────────────────────────────
 async function loadKeys() {
   const el = document.getElementById('keys-content');
@@ -623,6 +738,7 @@ function renderKeys(keys) {
             : `<button class="btn btn-success btn-sm" onclick="activateKey('${k.key}', this)">Activate</button>`
           }
           <button class="btn btn-ghost btn-sm" onclick="copyText('${escHtml(k.key)}')">Copy Key</button>
+          <button class="btn btn-ghost btn-sm" onclick="openUser('${escHtml(k.user_id)}')">Usage</button>
         </div>
       </div>`;
   }).join('');

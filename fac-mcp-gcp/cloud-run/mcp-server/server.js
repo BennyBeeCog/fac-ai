@@ -493,11 +493,11 @@ app.get('/admin/stats', requireApiKey, requireAdmin, async (req, res) => {
         GROUP BY DATE(timestamp) ORDER BY date
       `),
       pool.query(`
-        SELECT k.user_name, l.user_id, COUNT(*) as requests
+        SELECT l.user_id, MAX(k.user_name) as user_name, COUNT(*) as requests
         FROM usage_logs l
-        LEFT JOIN api_keys k ON k.user_id = l.user_id
+        LEFT JOIN api_keys k ON k.key = l.api_key
         WHERE l.timestamp > NOW() - INTERVAL '30 days'
-        GROUP BY l.user_id, k.user_name ORDER BY requests DESC LIMIT 10
+        GROUP BY l.user_id ORDER BY requests DESC LIMIT 10
       `),
       pool.query(`
         SELECT tool_name, COUNT(*) as count
@@ -516,6 +516,69 @@ app.get('/admin/stats', requireApiKey, requireAdmin, async (req, res) => {
     });
   } catch (err) {
     console.error('[admin/stats]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/admin/usage/:userId', requireApiKey, requireAdmin, async (req, res) => {
+  const userId = req.params.userId;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  try {
+    const pool = await getDbPool();
+    const [keys, totals, daily, byTool, recent] = await Promise.all([
+      pool.query(
+        `SELECT user_name, email, is_active, request_count, last_used_at
+         FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT COUNT(*) FILTER (WHERE timestamp > NOW() - INTERVAL '30 days') as last30,
+                COUNT(*) FILTER (WHERE timestamp > NOW() - INTERVAL '7 days') as last7,
+                COUNT(*) FILTER (WHERE NOT success) as failures,
+                ROUND(AVG(response_time_ms)) as avg_ms
+         FROM usage_logs WHERE user_id = $1`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT TO_CHAR(DATE(timestamp), 'YYYY-MM-DD') as date, COUNT(*) as count
+         FROM usage_logs WHERE user_id = $1 AND timestamp > NOW() - INTERVAL '14 days'
+         GROUP BY DATE(timestamp) ORDER BY date`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT tool_name, COUNT(*) as count FROM usage_logs
+         WHERE user_id = $1 GROUP BY tool_name ORDER BY count DESC`,
+        [userId]
+      ),
+      pool.query(
+        `SELECT tool_name, query, collection_id, timestamp, response_time_ms, success
+         FROM usage_logs WHERE user_id = $1 ORDER BY timestamp DESC LIMIT $2`,
+        [userId, limit]
+      ),
+    ]);
+    if (keys.rows.length === 0 && recent.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const t = totals.rows[0];
+    const lastUsed = keys.rows.map(k => k.last_used_at).filter(Boolean).sort((a, b) => b - a)[0] || null;
+    res.json({
+      userId,
+      userName: keys.rows[0]?.user_name || userId,
+      email: keys.rows.find(k => k.email)?.email || '',
+      keyCount: keys.rows.length,
+      activeKeyCount: keys.rows.filter(k => k.is_active).length,
+      totalRequests: keys.rows.reduce((sum, k) => sum + Number(k.request_count || 0), 0),
+      last30: Number(t.last30),
+      last7: Number(t.last7),
+      failures: Number(t.failures),
+      avgMs: t.avg_ms == null ? null : Number(t.avg_ms),
+      lastUsed,
+      dailyCounts: daily.rows.map(r => ({ date: r.date, count: Number(r.count) })),
+      byTool: byTool.rows.map(r => ({ tool: r.tool_name, count: Number(r.count) })),
+      recent: recent.rows,
+    });
+  } catch (err) {
+    console.error('[admin/usage]', err.message);
     res.status(500).json({ error: err.message });
   }
 });
