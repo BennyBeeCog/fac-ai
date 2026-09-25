@@ -583,6 +583,39 @@ app.get('/admin/usage/:userId', requireApiKey, requireAdmin, async (req, res) =>
   }
 });
 
+app.get('/admin/documents', requireApiKey, requireAdmin, async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const [collections, docs] = await Promise.all([
+      pool.query(`
+        SELECT c.id, c.name, c.description,
+               COUNT(DISTINCT sc.filename) as doc_count, COUNT(sc.id) as chunk_count
+        FROM collections c
+        LEFT JOIN sermon_chunks sc ON sc.collection_id = c.id
+        GROUP BY c.id, c.name, c.description ORDER BY c.name
+      `),
+      pool.query(`
+        SELECT filename, collection_id, COUNT(*) as chunk_count, MAX(created_at) as ingested_at
+        FROM sermon_chunks
+        GROUP BY filename, collection_id ORDER BY collection_id, filename
+      `),
+    ]);
+    res.json({
+      collections: collections.rows.map(c => ({
+        id: c.id, name: c.name, description: c.description,
+        docCount: Number(c.doc_count), chunkCount: Number(c.chunk_count),
+      })),
+      documents: docs.rows.map(d => ({
+        filename: d.filename, collectionId: d.collection_id,
+        chunkCount: Number(d.chunk_count), ingestedAt: d.ingested_at,
+      })),
+    });
+  } catch (err) {
+    console.error('[admin/documents]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/admin/keys', requireApiKey, requireAdmin, async (req, res) => {
   try {
     const pool = await getDbPool();
